@@ -1,109 +1,73 @@
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
-#include <pthread.h>
 
-#define THREAD_NUM 10
+#define MAX 10240
 
-char *s1, *s2;
-int n1, n2;
 int total = 0;
-pthread_mutex_t mutex;
+int n1, n2;
+char *s1, *s2;
+FILE *fp;
 
-typedef struct {
-    int thread_id;
-    int start;
-    int end;
-} thread_data;
-
-void *worker(void *arg) {
-    thread_data *data = (thread_data *)arg;
-    int local_count = 0;
-
-    // Search from start to (end - n2) so we don’t overflow
-    for (int i = data->start; i <= data->end - n2; i++) {
-        int match = 1;
-        for (int j = 0; j < n2; j++) {
-            if (s1[i + j] != s2[j]) {
-                match = 0;
-                break;
-            }
-        }
-        if (match) local_count++;
+int readf() {
+    if ((fp = fopen("strings.txt", "r")) == NULL) {
+        printf("ERROR: can't open strings.txt!\n");
+        return 0;
+    }
+    s1 = (char *)malloc(sizeof(char) * MAX);
+    s2 = (char *)malloc(sizeof(char) * MAX);
+    if (!s1 || !s2) {
+        printf("ERROR: Out of memory!\n");
+        return -1;
     }
 
-    printf("The number of substrings thread %d found is %d\n", data->thread_id, local_count);
-
-    pthread_mutex_lock(&mutex);
-    total += local_count;
-    pthread_mutex_unlock(&mutex);
-
-    pthread_exit(NULL);
-}
-
-void trim_newline(char *str) {
-    str[strcspn(str, "\r\n")] = '\0';
-}
-
-void read_strings() {
-    FILE *fp = fopen("string.txt", "r");
-    if (!fp) {
-        perror("Cannot open string.txt");
-        exit(1);
+    if (fgets(s1, MAX, fp) == NULL || fgets(s2, MAX, fp) == NULL) {
+        printf("ERROR: failed to read strings\n");
+        return -1;
     }
-
-    s1 = malloc(5000);
-    s2 = malloc(100);
-
-    fgets(s1, 5000, fp);
-    fgets(s2, 100, fp);
-
-    trim_newline(s1);
-    trim_newline(s2);
-
-    n1 = strlen(s1);
-    n2 = strlen(s2);
-
     fclose(fp);
+
+    // Remove trailing newlines
+    n1 = strlen(s1);
+    if (s1[n1 - 1] == '\n') {
+        s1[n1 - 1] = '\0';
+        n1--;
+    }
+
+    n2 = strlen(s2);
+    if (s2[n2 - 1] == '\n') {
+        s2[n2 - 1] = '\0';
+        n2--;
+    }
+
+    if (n1 < n2) return -1;
+    return 0;
+}
+
+int num_substring() {
+    total = 0;
+    for (int i = 0; i <= n1 - n2; i++) {
+        int j;
+        for (j = 0; j < n2; j++) {
+            if (s1[i + j] != s2[j])
+                break;
+        }
+        if (j == n2)
+            total++;
+    }
+    return total;
 }
 
 int main() {
-    pthread_t threads[THREAD_NUM];
-    thread_data tdata[THREAD_NUM];
-
-    pthread_mutex_init(&mutex, NULL);
-    read_strings();
-
-    if (n2 >= n1 / THREAD_NUM) {
-        printf("Error: s2 too long relative to s1 for this thread count.\n");
-        exit(1);
+    if (readf() != 0) {
+        printf("Error reading strings\n");
+        return 1;
     }
 
-    int base_chunk = n1 / THREAD_NUM;
-    int remainder = n1 % THREAD_NUM;
-
-    for (int i = 0; i < THREAD_NUM; i++) {
-        tdata[i].thread_id = i + 1;
-
-        tdata[i].start = i * base_chunk;
-        tdata[i].end = (i == THREAD_NUM - 1) 
-            ? n1 
-            : (i + 1) * base_chunk + n2 - 1;
-
-        if (tdata[i].end > n1) tdata[i].end = n1;
-
-        pthread_create(&threads[i], NULL, worker, &tdata[i]);
-    }
-
-    for (int i = 0; i < THREAD_NUM; i++) {
-        pthread_join(threads[i], NULL);
-    }
-
-    printf("Total substrings is %d\n", total);
+    int count = num_substring();
+    printf("The number of substrings is: %d\n", count);
 
     free(s1);
     free(s2);
-    pthread_mutex_destroy(&mutex);
-
     return 0;
 }
