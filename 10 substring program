@@ -1,0 +1,102 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <pthread.h>
+
+#define THREAD_NUM 10
+
+char *s1, *s2;
+int n1, n2;
+int total = 0;
+
+pthread_mutex_t mutex;
+
+typedef struct {
+    int start;
+    int end;
+    int thread_id;
+} thread_data;
+
+void *worker(void *arg) {
+    thread_data *data = (thread_data *)arg;
+    int local_count = 0;
+
+    for (int i = data->start; i <= data->end - n2; i++) {
+        int match = 1;
+        for (int j = 0; j < n2; j++) {
+            if (s1[i + j] != s2[j]) {
+                match = 0;
+                break;
+            }
+        }
+        if (match)
+            local_count++;
+    }
+
+    printf("The number of substrings thread %d found is %d\n", data->thread_id, local_count);
+
+    pthread_mutex_lock(&mutex);
+    total += local_count;
+    pthread_mutex_unlock(&mutex);
+
+    pthread_exit(NULL);
+}
+
+void read_strings() {
+    FILE *fp = fopen("string.txt", "r");
+    if (!fp) {
+        perror("Cannot open file string.txt");
+        exit(1);
+    }
+
+    s1 = malloc(1000);
+    s2 = malloc(1000);
+
+    fgets(s1, 1000, fp);
+    fgets(s2, 1000, fp);
+
+    s1[strcspn(s1, "\n")] = '\0';
+    s2[strcspn(s2, "\n")] = '\0';
+
+    n1 = strlen(s1);
+    n2 = strlen(s2);
+
+    fclose(fp);
+}
+
+int main() {
+    pthread_t threads[THREAD_NUM];
+    thread_data tdata[THREAD_NUM];
+
+    pthread_mutex_init(&mutex, NULL);
+    read_strings();
+
+    if (n1 % THREAD_NUM != 0 || n2 >= n1 / THREAD_NUM) {
+        printf("Error: Ensure n1 %% THREAD_NUM == 0 and n2 < n1 / THREAD_NUM\n");
+        exit(1);
+    }
+
+    int chunk = n1 / THREAD_NUM;
+
+    for (int i = 0; i < THREAD_NUM; i++) {
+        tdata[i].start = i * chunk;
+        tdata[i].end = (i == THREAD_NUM - 1) ? n1 : (i + 1) * chunk + n2 - 1;
+
+        if (tdata[i].end > n1)
+            tdata[i].end = n1;
+
+        tdata[i].thread_id = i + 1; // Human-readable thread ID (1-based)
+        pthread_create(&threads[i], NULL, worker, (void *)&tdata[i]);
+    }
+
+    for (int i = 0; i < THREAD_NUM; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    printf("Total substrings is %d\n", total);
+
+    free(s1);
+    free(s2);
+    pthread_mutex_destroy(&mutex);
+    return 0;
+}
