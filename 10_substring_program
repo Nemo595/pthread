@@ -8,13 +8,12 @@
 char *s1, *s2;
 int n1, n2;
 int total = 0;
-
 pthread_mutex_t mutex;
 
 typedef struct {
+    int thread_id;
     int start;
     int end;
-    int thread_id;
 } thread_data;
 
 void *worker(void *arg) {
@@ -29,8 +28,7 @@ void *worker(void *arg) {
                 break;
             }
         }
-        if (match)
-            local_count++;
+        if (match) local_count++;
     }
 
     printf("The number of substrings thread %d found is %d\n", data->thread_id, local_count);
@@ -49,11 +47,11 @@ void read_strings() {
         exit(1);
     }
 
-    s1 = malloc(1000);
-    s2 = malloc(1000);
+    s1 = malloc(5000);
+    s2 = malloc(100);
 
-    fgets(s1, 1000, fp);
-    fgets(s2, 1000, fp);
+    fgets(s1, 5000, fp);
+    fgets(s2, 100, fp);
 
     s1[strcspn(s1, "\n")] = '\0';
     s2[strcspn(s2, "\n")] = '\0';
@@ -71,22 +69,28 @@ int main() {
     pthread_mutex_init(&mutex, NULL);
     read_strings();
 
-    if (n1 % THREAD_NUM != 0 || n2 >= n1 / THREAD_NUM) {
-        printf("Error: Ensure n1 %% THREAD_NUM == 0 and n2 < n1 / THREAD_NUM\n");
+    if (n2 >= n1 / THREAD_NUM) {
+        printf("Error: s2 is too long relative to s1 size per thread.\n");
         exit(1);
     }
 
-    int chunk = n1 / THREAD_NUM;
+    int base_chunk = n1 / THREAD_NUM;
+    int extra = n1 % THREAD_NUM;
 
     for (int i = 0; i < THREAD_NUM; i++) {
-        tdata[i].start = i * chunk;
-        tdata[i].end = (i == THREAD_NUM - 1) ? n1 : (i + 1) * chunk + n2 - 1;
+        tdata[i].thread_id = i + 1;
+        tdata[i].start = i * base_chunk;
 
+        // Distribute remaining characters to the last thread
+        tdata[i].end = (i == THREAD_NUM - 1)
+            ? n1
+            : (i + 1) * base_chunk + n2 - 1;
+
+        // Ensure we don’t go past end of s1
         if (tdata[i].end > n1)
             tdata[i].end = n1;
 
-        tdata[i].thread_id = i + 1; // Human-readable thread ID (1-based)
-        pthread_create(&threads[i], NULL, worker, (void *)&tdata[i]);
+        pthread_create(&threads[i], NULL, worker, &tdata[i]);
     }
 
     for (int i = 0; i < THREAD_NUM; i++) {
@@ -98,5 +102,6 @@ int main() {
     free(s1);
     free(s2);
     pthread_mutex_destroy(&mutex);
+
     return 0;
 }
